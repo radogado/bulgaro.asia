@@ -65,7 +65,7 @@ function login_header($title = 'Log In', $message = '', $wp_error = '') {
 	wp_admin_css( 'colors-fresh', true );
 
 	if ( wp_is_mobile() ) { ?>
-		<meta name="viewport" content="width=320; initial-scale=0.9; maximum-scale=1.0; user-scalable=0;" /><?php
+		<meta name="viewport" content="width=320, initial-scale=0.9, maximum-scale=1.0, user-scalable=0" /><?php
 	}
 
 	// Remove all stored post data on logging out.
@@ -393,7 +393,9 @@ if ( defined( 'RELOCATE' ) && RELOCATE ) { // Move flag is set
 }
 
 //Set a cookie now to see if they are supported by the browser.
+
 setcookie(TEST_COOKIE, 'WP Cookie check', 0, COOKIEPATH, COOKIE_DOMAIN);
+
 if ( SITECOOKIEPATH != COOKIEPATH )
 	setcookie(TEST_COOKIE, 'WP Cookie check', 0, SITECOOKIEPATH, COOKIE_DOMAIN);
 

@@ -7,6 +7,9 @@ class Polylang_Nav_Menu {
 
 			// remove the customize menu section as it is unusable with Polylang
 			add_action('customize_register', array(&$this, 'customize_register'), 20); // since WP 3.4
+
+			// protection against #24802
+			add_filter('pre_insert_term', array(&$this, 'pre_insert_term'), 10, 2);
 		}
 		else {
 			// split the language switcher menu item in several language menu items
@@ -183,6 +186,18 @@ class Polylang_Nav_Menu {
 		$GLOBALS['wp_customize']->remove_section('nav'); // since WP 3.4
 	}
 
+	// FIXME prevents sharing a menu term with a language term by renaming the nav menu before its creation
+	// to avoid http://core.trac.wordpress.org/ticket/24802
+	// and http://wordpress.org/support/topic/all-connection-between-elements-lost
+	function pre_insert_term($name, $taxonomy) {
+		if ('nav_menu' == $taxonomy) {
+			global $polylang;
+			foreach ($polylang->get_languages_list() as $language)
+				if ($name == $language->name)
+					$name = $name . '-menu';
+		}
+		return $name;
+	}
 
 	// split the one item of backend in several items on frontend
 	// take care to menu_order as it is used later in wp_nav_menu
@@ -193,13 +208,20 @@ class Polylang_Nav_Menu {
 
 		foreach ($items as $key => $item) {
 			if ($options = get_post_meta($item->ID, '_pll_menu_item', true)) {
+				extract($options);
 				$i = 0;
 
-				foreach ($lang_items = $polylang->the_languages(array_merge(array('item' => $item), $options)) as $lang_item)
+				foreach ($polylang->the_languages(array_merge(array('raw' => 1), $options)) as $language) {
+					extract($language);
+					$lang_item = clone $item;
+					$lang_item->title = $show_flags && $show_names ? $flag.'&nbsp;'.$name : ($show_flags ? $flag : $name);
+					$lang_item->url = $url;
+					$lang_item->lang = $slug; // save this for use in nav_menu_link_attributes
+					$lang_item->classes = $classes;
 					$lang_item->menu_order += $offset + $i++;
-
+					$new_items[] = $lang_item;
+				}
 				$offset += $i - 1;
-				$new_items = array_merge($new_items, $lang_items);
 			}
 			else {
 				$item->menu_order += $offset;
@@ -223,11 +245,11 @@ class Polylang_Nav_Menu {
 		$r_ids = $k_ids = array();
 
 		foreach ($items as $item) {
-			if (in_array('current-lang', $item->classes)) {
+			if (is_array($item->classes) && in_array('current-lang', $item->classes)) {
 				$item->classes = array_diff($item->classes, array('current-menu-item'));
 				$r_ids = array_merge($r_ids, $this->get_ancestors($item)); // remove the classes for these ancestors
 			}
-			elseif (in_array('current-menu-item', $item->classes))
+			elseif (is_array($item->classes) && in_array('current-menu-item', $item->classes))
 				$k_ids = array_merge($k_ids, $this->get_ancestors($item)); // keep the classes for these ancestors
 		}
 

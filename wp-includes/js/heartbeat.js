@@ -1,6 +1,10 @@
 /**
  * Heartbeat API
  *
+ * Note: this API is "experimental" meaning it will likely change a lot
+ * in the next few releases based on feedback from 3.6.0. If you intend
+ * to use it, please follow the development closely.
+ *
  * Heartbeat is a simple server polling API that sends XHR requests to
  * the server every 15 seconds and triggers events (or callbacks) upon
  * receiving data. Currently these 'ticks' handle transports for post locking,
@@ -40,10 +44,17 @@ window.wp = window.wp || {};
 			isUserActive,
 			userActiveEvents,
 			winBlurTimeout,
-			frameBlurTimeout = -1;
+			frameBlurTimeout = -1,
+			hasConnectionError = false;
 
-		this.autostart = true;
-		this.connectionLost = false;
+		/**
+		 * Returns a boolean that's indicative of whether or not there is a connection error
+		 *
+		 * @returns boolean
+		 */
+		this.hasConnectionError = function() {
+			return hasConnectionError;
+		};
 
 		if ( typeof( window.heartbeatSettings ) == 'object' ) {
 			settings = $.extend( {}, window.heartbeatSettings );
@@ -121,13 +132,13 @@ window.wp = window.wp || {};
 						break;
 				}
 
-				if ( trigger && ! self.connectionLost ) {
-					self.connectionLost = true;
+				if ( trigger && ! self.hasConnectionError() ) {
+					hasConnectionError = true;
 					$(document).trigger( 'heartbeat-connection-lost', [error] );
 				}
-			} else if ( self.connectionLost ) {
+			} else if ( self.hasConnectionError() ) {
 				errorcount = 0;
-				self.connectionLost = false;
+				hasConnectionError = false;
 				$(document).trigger( 'heartbeat-connection-restored' );
 			}
 		}
@@ -152,7 +163,7 @@ window.wp = window.wp || {};
 
 			// If nothing to send (nothing is expecting a response),
 			// schedule the next tick and bail
-			if ( empty && ! self.connectionLost ) {
+			if ( empty && ! self.hasConnectionError() ) {
 				connecting = false;
 				next();
 				return;
@@ -169,7 +180,7 @@ window.wp = window.wp || {};
 			self.xhr = $.ajax({
 				url: url,
 				type: 'post',
-				timeout: 30000, // throw an error of not completed after 30 sec.
+				timeout: 30000, // throw an error if not completed after 30 sec.
 				data: send,
 				dataType: 'json'
 			}).done( function( response, textStatus, jqXHR ) {
@@ -179,7 +190,7 @@ window.wp = window.wp || {};
 					return errorstate( 'empty' );
 
 				// Clear error state
-				if ( self.connectionLost )
+				if ( self.hasConnectionError() )
 					errorstate();
 
 				if ( response.nonces_expired ) {
@@ -205,7 +216,7 @@ window.wp = window.wp || {};
 				errorstate( textStatus || 'unknown' );
 				self.error( jqXHR, textStatus, error );
 			});
-		};
+		}
 
 		function next() {
 			var delta = time() - tick, t = interval;
@@ -214,7 +225,7 @@ window.wp = window.wp || {};
 				return;
 
 			if ( ! hasFocus ) {
-				t = 120000; // 2 min
+				t = 100000; // 100 sec. Post locks expire after 120 sec.
 			} else if ( countdown > 0 && tempInterval ) {
 				t = tempInterval;
 				countdown--;
@@ -332,19 +343,16 @@ window.wp = window.wp || {};
 
 		// Check for user activity every 30 seconds.
 		window.setInterval( function(){ checkUserActive(); }, 30000 );
-
-		if ( this.autostart ) {
-			$(document).ready( function() {
-				// Start one tick (15 sec) after DOM ready
-				running = true;
-				tick = time();
-				next();
-			});
-		}
+		$(document).ready( function() {
+			// Start one tick (15 sec) after DOM ready
+			running = true;
+			tick = time();
+			next();
+		});
 
 		this.hasFocus = function() {
 			return hasFocus;
-		}
+		};
 
 		/**
 		 * Get/Set the interval
@@ -401,27 +409,6 @@ window.wp = window.wp || {};
 			return tempInterval ? tempInterval / 1000 : interval / 1000;
 		};
 
-		// Start. Has no effect if heartbeat is already running
-		this.start = function() {
-			if ( running )
-				return false;
-
-			running = true;
-			connect();
-			return true;
-		};
-
-		// Stop. If a XHR is in progress, abort it
-		this.stop = function() {
-			if ( self.xhr && self.xhr.readyState != 4 )
-				self.xhr.abort();
-
-			// Reset the error state
-			errorstate();
-			running = false;
-			return true;
-		}
-
 		/**
 		 * Enqueue data to send with the next XHR
 		 *
@@ -447,7 +434,7 @@ window.wp = window.wp || {};
 				return true;
 			}
 			return false;
-		}
+		};
 
 		/**
 		 * Check if data with a particular handle is queued
@@ -457,8 +444,8 @@ window.wp = window.wp || {};
 		 */
 		this.isQueued = function( handle ) {
 			return queue[handle];
-		}
-	}
+		};
+	};
 
 	$.extend( Heartbeat.prototype, {
 		tick: function( data, textStatus, jqXHR ) {
